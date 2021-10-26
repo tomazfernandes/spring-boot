@@ -39,6 +39,9 @@ import org.springframework.boot.context.properties.source.MutuallyExclusiveConfi
 import org.springframework.boot.convert.DurationUnit;
 import org.springframework.core.io.Resource;
 import org.springframework.kafka.listener.ContainerProperties.AckMode;
+import org.springframework.kafka.retrytopic.DltStrategy;
+import org.springframework.kafka.retrytopic.FixedDelayStrategy;
+import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
 import org.springframework.kafka.security.jaas.KafkaJaasLoginModuleInitializer;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.unit.DataSize;
@@ -53,6 +56,7 @@ import org.springframework.util.unit.DataSize;
  * @author Stephane Nicoll
  * @author Artem Bilan
  * @author Nakul Mishra
+ * @author Tomaz Fernandes
  * @since 1.5.0
  */
 @ConfigurationProperties(prefix = "spring.kafka")
@@ -92,6 +96,8 @@ public class KafkaProperties {
 	private final Template template = new Template();
 
 	private final Security security = new Security();
+
+	private final Map<String, RetryTopicProperties> retryTopic = new HashMap<>();
 
 	public List<String> getBootstrapServers() {
 		return this.bootstrapServers;
@@ -147,6 +153,16 @@ public class KafkaProperties {
 
 	public Security getSecurity() {
 		return this.security;
+	}
+
+	public Map<String, RetryTopicProperties> getRetryTopic() {
+		return this.retryTopic;
+	}
+
+	public Map<String, RetryTopicProperties> getRetryTopicOrDefault() {
+		return this.retryTopic.isEmpty()
+				? Collections.singletonMap("globalConfiguration", new RetryTopicProperties())
+				: this.retryTopic;
 	}
 
 	private Map<String, Object> buildCommonProperties() {
@@ -1336,6 +1352,378 @@ public class KafkaProperties {
 
 		public void setOnShutdown(boolean onShutdown) {
 			this.onShutdown = onShutdown;
+		}
+
+	}
+
+	public static class RetryTopicProperties {
+
+		/**
+		 * The total number of attempts, including the first one.
+		 */
+		private Integer attempts;
+
+		/**
+		 * The BackOff configuration to be used for delaying the retries.
+		 */
+		private BackOff backOff;
+
+		/**
+		 * The global timeout after which, upon the next failure, the message will be sent
+		 * to the DLT, if one is configured, or stop being processed.
+		 */
+		private Duration timeout;
+
+		/**
+		 * The {@link org.springframework.kafka.core.KafkaTemplate} to be used for
+		 * forwarding the message to the retry topics and dlt.
+		 */
+		private String kafkaTemplate = "kafkaTemplate";
+
+		/**
+		 * The {@link org.springframework.kafka.config.KafkaListenerContainerFactory} to
+		 * be used for creating the retry topics and dlt consumers.
+		 */
+		private String listenerContainerFactory;
+
+		/**
+		 * The exceptions class' fully qualified names that will be retried.
+		 */
+		private List<String> retryOn;
+
+		/**
+		 * The exceptions class' fully qualified names that will not be retried.
+		 */
+		private List<String> notRetryOn;
+
+		/**
+		 * Whether or not to look into nested exceptions for deciding whether to retry or
+		 * not.
+		 */
+		private Boolean traversingCauses;
+
+		/**
+		 * The topics for which that this configuration should be applied.
+		 */
+		private List<String> includeTopics;
+
+		/**
+		 * The topics for which that this configuration should not be applied.
+		 */
+		private List<String> excludeTopics;
+
+		/**
+		 * The suffix to be applied to the retry topics.
+		 */
+		private String retryTopicSuffix;
+
+		/**
+		 * The suffix to be applied to the dlts.
+		 */
+		private String dltSuffix;
+
+		/**
+		 * The fully qualified name of the class that will handle dlt messages.
+		 */
+		private String dltHandlerClass;
+
+		/**
+		 * The method that will handle dlt messages.
+		 */
+		private String dltHandlerMethod;
+
+		/**
+		 * The strategy to use for fixed delay topics. SINGLE_TOPICS will handle all
+		 * retries in the same topic. MULTIPLE_TOPICS will create one separate topic for
+		 * each retry attempt.
+		 */
+		private FixedDelayStrategy fixedDelayStrategy;
+
+		/**
+		 * The strategy to be used for DLT processing. NO_DLT won't create a DLT at all.
+		 * ALWAYS_RETRY_ON_ERROR always retries if dlt processing fails. FAIL_ON_ERROR
+		 * stops processing the message if dlt processing fails.
+		 */
+		private DltStrategy dltStrategy;
+
+		/**
+		 * The strategy to be used for suffixing the topics. SUFFIX_WITH_INDEX_VALUE will
+		 * append the topic index. SUFFIX_WITH_DELAY_VALUE will append the delay value for
+		 * the topic.
+		 */
+		private TopicSuffixingStrategy topicSuffixingStrategy;
+
+		/**
+		 * Configuration for auto creating the retry and dlt topics.
+		 */
+		private AutoCreateTopics autoCreateTopics;
+
+		public Integer getAttempts() {
+			return this.attempts;
+		}
+
+		public void setAttempts(Integer attempts) {
+			this.attempts = attempts;
+		}
+
+		public BackOff getBackOff() {
+			return this.backOff;
+		}
+
+		public BackOff getBackOffIfNotEmpty() {
+			return (this.backOff != null) ? this.backOff.getIfNotEmpty() : null;
+		}
+
+		public void setBackOff(BackOff backOff) {
+			this.backOff = backOff;
+		}
+
+		public Duration getTimeout() {
+			return this.timeout;
+		}
+
+		public Long getTimeoutMillisIfPresent() {
+			return (this.timeout != null) ? this.timeout.toMillis() : null;
+		}
+
+		public void setTimeout(Duration timeout) {
+			this.timeout = timeout;
+		}
+
+		public String getKafkaTemplate() {
+			return this.kafkaTemplate;
+		}
+
+		public void setKafkaTemplate(String kafkaTemplate) {
+			this.kafkaTemplate = kafkaTemplate;
+		}
+
+		public String getListenerContainerFactory() {
+			return this.listenerContainerFactory;
+		}
+
+		public void setListenerContainerFactory(String listenerContainerFactory) {
+			this.listenerContainerFactory = listenerContainerFactory;
+		}
+
+		public List<String> getRetryOn() {
+			return this.retryOn;
+		}
+
+		public void setRetryOn(List<String> retryOn) {
+			this.retryOn = retryOn;
+		}
+
+		public List<String> getNotRetryOn() {
+			return this.notRetryOn;
+		}
+
+		public void setNotRetryOn(List<String> notRetryOn) {
+			this.notRetryOn = notRetryOn;
+		}
+
+		public List<String> getIncludeTopics() {
+			return this.includeTopics;
+		}
+
+		public void setIncludeTopics(List<String> includeTopics) {
+			this.includeTopics = includeTopics;
+		}
+
+		public List<String> getExcludeTopics() {
+			return this.excludeTopics;
+		}
+
+		public void setExcludeTopics(List<String> excludeTopics) {
+			this.excludeTopics = excludeTopics;
+		}
+
+		public Boolean isTraversingCauses() {
+			return this.traversingCauses;
+		}
+
+		public void setTraversingCauses(boolean traversingCauses) {
+			this.traversingCauses = traversingCauses;
+		}
+
+		public String getRetryTopicSuffix() {
+			return this.retryTopicSuffix;
+		}
+
+		public void setRetryTopicSuffix(String retryTopicSuffix) {
+			this.retryTopicSuffix = retryTopicSuffix;
+		}
+
+		public String getDltSuffix() {
+			return this.dltSuffix;
+		}
+
+		public void setDltSuffix(String dltSuffix) {
+			this.dltSuffix = dltSuffix;
+		}
+
+		public void setDltHandlerMethod(String dltHandlerMethod) {
+			this.dltHandlerMethod = dltHandlerMethod;
+		}
+
+		public String getDltHandlerMethod() {
+			return this.dltHandlerMethod;
+		}
+
+		public void setDltHandlerClass(String dltHandlerClass) {
+			this.dltHandlerClass = dltHandlerClass;
+		}
+
+		public String getDltHandlerClass() {
+			return this.dltHandlerClass;
+		}
+
+		public FixedDelayStrategy getFixedDelayStrategy() {
+			return this.fixedDelayStrategy;
+		}
+
+		public void setFixedDelayStrategy(FixedDelayStrategy fixedDelayStrategy) {
+			this.fixedDelayStrategy = fixedDelayStrategy;
+		}
+
+		public DltStrategy getDltStrategy() {
+			return this.dltStrategy;
+		}
+
+		public void setDltStrategy(DltStrategy dltStrategy) {
+			this.dltStrategy = dltStrategy;
+		}
+
+		public TopicSuffixingStrategy getTopicSuffixingStrategy() {
+			return this.topicSuffixingStrategy;
+		}
+
+		public void setTopicSuffixingStrategy(TopicSuffixingStrategy topicSuffixingStrategy) {
+			this.topicSuffixingStrategy = topicSuffixingStrategy;
+		}
+
+		public AutoCreateTopics getAutoCreateTopics() {
+			return this.autoCreateTopics;
+		}
+
+		public AutoCreateTopics getAutoCreateTopicsIfNotEmpty() {
+			return (this.autoCreateTopics != null) ? this.autoCreateTopics.getIfNotEmpty() : null;
+		}
+
+		public void setAutoCreateTopics(AutoCreateTopics autoCreateTopics) {
+			this.autoCreateTopics = autoCreateTopics;
+		}
+
+		/**
+		 * Retry topics BackOff configuration.
+		 */
+		public static class BackOff {
+
+			/**
+			 * The base delay that will be used for backing off.
+			 */
+			private Duration delay;
+
+			/**
+			 * The maximum delay used for backing off.
+			 */
+			private Duration maxDelay;
+
+			/**
+			 * The back off multiplier.
+			 */
+			private Double multiplier;
+
+			/**
+			 * Whether to use random intervals in exponential back off.
+			 */
+			private Boolean random;
+
+			public Duration getDelay() {
+				return this.delay;
+			}
+
+			public void setDelay(Duration delay) {
+				this.delay = delay;
+			}
+
+			public Duration getMaxDelay() {
+				return this.maxDelay;
+			}
+
+			public void setMaxDelay(Duration maxDelay) {
+				this.maxDelay = maxDelay;
+			}
+
+			public Double getMultiplier() {
+				return this.multiplier;
+			}
+
+			public void setMultiplier(Double multiplier) {
+				this.multiplier = multiplier;
+			}
+
+			public Boolean isRandom() {
+				return this.random;
+			}
+
+			public void setRandom(boolean random) {
+				this.random = random;
+			}
+
+			public BackOff getIfNotEmpty() {
+				return (this.delay == null && this.maxDelay == null && this.multiplier == null && this.random == null)
+						? null : this;
+			}
+
+		}
+
+		public static class AutoCreateTopics {
+
+			/**
+			 * Whether or not to auto create the retry and dlt topics.
+			 */
+			private Boolean enabled;
+
+			/**
+			 * The number of partitions for each retry topic and dlt.
+			 */
+			private Integer numberOfPartitions;
+
+			/**
+			 * The replication factor for the retry topics and dlt.
+			 */
+			private Short replicationFactor;
+
+			public boolean isEnabled() {
+				return this.enabled;
+			}
+
+			public void setEnabled(boolean enabled) {
+				this.enabled = enabled;
+			}
+
+			public int getNumberOfPartitions() {
+				return this.numberOfPartitions;
+			}
+
+			public void setNumberOfPartitions(int numberOfPartitions) {
+				this.numberOfPartitions = numberOfPartitions;
+			}
+
+			public short getReplicationFactor() {
+				return this.replicationFactor;
+			}
+
+			public void setReplicationFactor(short replicationFactor) {
+				this.replicationFactor = replicationFactor;
+			}
+
+			public AutoCreateTopics getIfNotEmpty() {
+				return (this.enabled == null && this.numberOfPartitions == null && this.replicationFactor == null)
+						? null : this;
+			}
+
 		}
 
 	}
