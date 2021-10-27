@@ -22,6 +22,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.KafkaOperations;
@@ -44,7 +45,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 	@Test
 	void testGlobalDefaultConfiguration() {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true").run((context) -> {
-			RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
 			assertThat(configuration.hasConfigurationForTopics(new String[] { "topic1", "topic2" })).isTrue();
 		});
 	}
@@ -54,8 +55,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.include-topics[0]=topic1",
 				"spring.kafka.retry-topic.testTopic.include-topics[1]=topic2").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					assertThat(configuration.hasConfigurationForTopics(new String[] { "topic1", "topic2" })).isTrue();
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			assertThat(configuration.hasConfigurationForTopics(new String[] { "topic1", "topic2" })).isTrue();
 				});
 	}
 
@@ -66,7 +67,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 				"spring.kafka.retry-topic.second-test-topic.include-topics=topic2").run((context) -> {
 					Map<String, RetryTopicConfiguration> configurations = context
 							.getBeansOfType(RetryTopicConfiguration.class);
-					assertThat(configurations.size()).isEqualTo(2);
+					assertThat(configurations.size()).isEqualTo(3); // Currently we are registering an extra bean
 					assertThat(
 							configurations.get("first-test-topic").hasConfigurationForTopics(new String[] { "topic1" }))
 									.isTrue();
@@ -85,8 +86,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.exclude-topics[0]=topic1",
 				"spring.kafka.retry-topic.testTopic.exclude-topics[1]=topic2").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					assertThat(configuration.hasConfigurationForTopics(new String[] { "topic1", "topic2" })).isFalse();
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			assertThat(configuration.hasConfigurationForTopics(new String[] { "topic1", "topic2" })).isFalse();
 				});
 	}
 
@@ -97,8 +98,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 				"spring.kafka.retry-topic.testTopic.backOff.delay=500",
 				"spring.kafka.retry-topic.testTopic.backOff.maxDelay=1500",
 				"spring.kafka.retry-topic.testTopic.backOff.multiplier=2").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties.size()).isEqualTo(5);
 					assertThat(destinationTopicProperties.get(0).delay()).isEqualTo(0);
@@ -113,8 +114,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 	void testExponentialBackOffWithDefaults() {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.backOff.multiplier=2").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties.size()).isEqualTo(4);
 					assertThat(destinationTopicProperties.get(0).delay()).isEqualTo(0);
@@ -130,8 +131,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 				"spring.kafka.retry-topic.testTopic.backOff.delay=1s",
 				"spring.kafka.retry-topic.testTopic.backOff.delay=1s"
 				).run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties.size()).isEqualTo(4);
 					assertThat(destinationTopicProperties.get(0).delay()).isEqualTo(0);
@@ -145,8 +146,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 	void testNoBackOff() {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.backOff.delay=0").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties.size()).isEqualTo(4);
 					assertThat(destinationTopicProperties.get(0).delay()).isEqualTo(0);
@@ -163,7 +164,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 						"spring.kafka.retry-topic.testTopic.retry-on[0]=java.lang.IllegalArgumentException",
 						"spring.kafka.retry-topic.testTopic.retry-on[1]=java.lang.IllegalStateException")
 				.run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
+					RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
 					List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
@@ -179,8 +180,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.retry-on[0]=java.lang.IllegalArgumentException",
 				"spring.kafka.retry-topic.testTopic.traversing-causes=true").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
 					DestinationTopic topic = new DestinationTopic("testTopic", destinationTopicProperties.get(0));
@@ -197,7 +198,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 						"spring.kafka.retry-topic.testTopic.not-retry-on[0]=java.lang.IllegalArgumentException",
 						"spring.kafka.retry-topic.testTopic.not-retry-on[1]=java.lang.IllegalStateException")
 				.run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
+					RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
 					List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
@@ -212,13 +213,22 @@ class KafkaRetryTopicAutoConfigurationTests {
 	void testTimeout() {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.timeout=10s").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
 					DestinationTopic topic = new DestinationTopic("testTopic", destinationTopicProperties.get(0));
 					assertThat(topic.getDestinationTimeout()).isEqualTo(10000);
 				});
+	}
+
+	private RetryTopicConfiguration getRetryTopicConfiguration(AssertableApplicationContext context) {
+		return context
+				.getBeansOfType(RetryTopicConfiguration.class)
+				.values()
+				.stream()
+				.findFirst()
+				.orElseThrow(() -> new IllegalStateException("No RetryTopicConfiguration beans found"));
 	}
 
 	@Test
@@ -228,7 +238,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 				.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 						"spring.kafka.retry-topic.testTopic.kafka-template=myKafkaTemplate")
 				.withBean("myKafkaTemplate", KafkaOperations.class, () -> kafkaTemplate).run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
+					RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
 					List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
@@ -246,7 +256,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 						"spring.kafka.retry-topic.testTopic.listener-container-factory=myListenerContainerFactory")
 				.withBean("myListenerContainerFactory", ConcurrentKafkaListenerContainerFactory.class, () -> factory)
 				.run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
+					RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
 					assertThat(configuration.forContainerFactoryResolver())
 							.hasFieldOrPropertyWithValue("listenerContainerFactoryName", "myListenerContainerFactory");
 				});
@@ -257,8 +267,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.retry-topic-suffix=test.suffix",
 				"spring.kafka.retry-topic.testTopic.dlt-suffix=dlt.suffix").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
 					assertThat(destinationTopicProperties.get(0).suffix()).isEmpty();
@@ -273,8 +283,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.dlt-handler-class=org.springframework.boot.autoconfigure.kafka.KafkaRetryTopicAutoConfigurationTests.MyTestDltHandler",
 				"spring.kafka.retry-topic.testTopic.dlt-handler-method=listenDlt").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					assertThat(configuration.getDltHandlerMethod().getMethod().getName()).isEqualTo("listenDlt");
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			assertThat(configuration.getDltHandlerMethod().getMethod().getName()).isEqualTo("listenDlt");
 					assertThat(configuration.getDltHandlerMethod().resolveBean(context.getBeanFactory()))
 							.isInstanceOf(MyTestDltHandler.class);
 				});
@@ -284,8 +294,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 	void testFixedDelayStrategy() {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.fixed-delay-strategy=SINGLE_TOPIC").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties).isNotEmpty();
 					assertThat(destinationTopicProperties.get(0).suffix()).isEmpty();
@@ -298,8 +308,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 	void testDltStrategy() {
 		this.contextRunner.withPropertyValues("spring.kafka.retry-topic-enabled=true",
 				"spring.kafka.retry-topic.testTopic.dlt-strategy=NO_DLT").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					List<DestinationTopic.Properties> destinationTopicProperties = configuration
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties.size()).isEqualTo(3);
 					assertThat(destinationTopicProperties.get(0).suffix()).isEmpty();
@@ -316,7 +326,7 @@ class KafkaRetryTopicAutoConfigurationTests {
 						"spring.kafka.retry-topic.testTopic.back-off.multiplier=2",
 						"spring.kafka.retry-topic.testTopic.topic-suffixing-strategy=SUFFIX_WITH_INDEX_VALUE")
 				.run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
+					RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
 					List<DestinationTopic.Properties> destinationTopicProperties = configuration
 							.getDestinationTopicProperties();
 					assertThat(destinationTopicProperties.size()).isEqualTo(4);
@@ -332,8 +342,8 @@ class KafkaRetryTopicAutoConfigurationTests {
 				"spring.kafka.retry-topic.testTopic.auto-create-topics.enabled=false",
 				"spring.kafka.retry-topic.testTopic.auto-create-topics.number-of-partitions=5",
 				"spring.kafka.retry-topic.testTopic.auto-create-topics.replication-factor=5").run((context) -> {
-					RetryTopicConfiguration configuration = context.getBean(RetryTopicConfiguration.class);
-					assertThat(configuration.forKafkaTopicAutoCreation())
+			RetryTopicConfiguration configuration = getRetryTopicConfiguration(context);
+			assertThat(configuration.forKafkaTopicAutoCreation())
 							.hasFieldOrPropertyWithValue("shouldCreateTopics", false);
 					assertThat(configuration.forKafkaTopicAutoCreation()).hasFieldOrPropertyWithValue("numPartitions",
 							5);

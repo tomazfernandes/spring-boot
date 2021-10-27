@@ -62,27 +62,26 @@ public class KafkaRetryTopicAutoConfiguration {
 		this.properties = properties;
 		this.propertiesProcessor = propertiesProcessor;
 		this.beanRegistry = beanRegistry;
-		this.properties
-				.getRetryTopicOrDefault()
-				.forEach(this::registerConfigurationFromProperties);
-	}
-
-	private void registerConfigurationFromProperties(String configurationName,
-													KafkaProperties.RetryTopicProperties retryTopicProperties) {
-
-		this.beanRegistry.registerSingleton(configurationName,
-				this.propertiesProcessor.process(retryTopicProperties, configurationName));
 	}
 
 	@Bean
 	RetryTopicConfiguration retryTopicConfiguration() {
-		// Workaround so that this class gets instantiated when RetryTopicConfiguration
-		// beans are looked up in RetryTopic bootstrapping.
-		// We probably should have an aggregation class instead.
+
+		this.properties
+				.getRetryTopicOrDefault()
+				.forEach(this::registerConfigurationFromProperties);
+
 		Map.Entry<String, KafkaProperties.RetryTopicProperties> propertiesEntry =
-				this.properties.getRetryTopic().entrySet().stream().findFirst().orElseThrow(
+				this.properties.getRetryTopicOrDefault().entrySet().stream().findFirst().orElseThrow(
 						() -> new IllegalStateException("No configuration provided!"));
 		return this.propertiesProcessor.process(propertiesEntry.getValue(), propertiesEntry.getKey());
+	}
+
+	private void registerConfigurationFromProperties(String configurationName,
+													 KafkaProperties.RetryTopicProperties retryTopicProperties) {
+
+		this.beanRegistry.registerSingleton(configurationName,
+				this.propertiesProcessor.process(retryTopicProperties, configurationName));
 	}
 
 	@Bean(name = RetryTopicInternalBeanNames.DEFAULT_LISTENER_FACTORY_BEAN_NAME)
